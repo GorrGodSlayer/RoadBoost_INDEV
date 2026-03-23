@@ -1,0 +1,48 @@
+# RoadBoost Configuration
+
+# Blocks used to build the road, with their relative weights.
+# The plugin will randomly pick from this list when placing each block.
+# Format: MATERIAL:WEIGHT  (higher weight = more common)
+road-blocks:
+  - COBBLESTONE:40
+  - STONE:30
+  - GRAVEL:20
+  - COARSE_DIRT:10
+
+# How wide the road should be (in blocks) on each side of the player's path.
+# 0 = only the block the player walked on (1 block wide total)
+# 1 = 1 block on each side (3 blocks wide total)
+road-width: 1
+
+# How many blocks behind the player to undo when using /road undo.
+# This is the radius around the player's feet that gets removed.
+undo-radius: 5
+
+# Potion effects applied when a player walks on a road.
+# You can add as many effects as you like.
+# Amplifier 0 = level I, 1 = level II, etc.
+# Duration is in ticks (20 ticks = 1 second). Keep this short so it
+# feels continuous — the task reapplies it every second.
+effects:
+  - type: SPEED
+    amplifier: 1
+    duration: 40
+  - type: JUMP_BOOST
+    amplifier: 0
+    duration: 40
+
+# How often (in ticks) to check if a player is standing on a road
+# and reapply effects. 20 = every second.
+boost-check-interval: 20
+
+# Particle shown when the road is placed.
+# Set to NONE to disable.
+place-particle: HAPPY_VILLAGER
+
+# Sound played when recording stops and the road is placed.
+# Set to NONE to disable.
+place-sound: BLOCK_NOTE_BLOCK_PLING
+
+# Particle shown while recording a road (shown on each block as you walk).
+# Set to NONE to disable.
+record-particle: DUST

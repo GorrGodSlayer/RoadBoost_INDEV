@@ -1,0 +1,19 @@
+name: RoadBoost
+version: 1.0.0
+main: com.roadboost.RoadBoostPlugin
+api-version: '1.21'
+description: Create roads by walking and give players boosts when they walk on them.
+
+permissions:
+  roadboost.build:
+    description: Allows a player to create and remove roads.
+    default: op
+  roadboost.admin:
+    description: Allows access to admin commands like reload.
+    default: op
+
+commands:
+  road:
+    description: Main road management command.
+    usage: /road <start|stop|undo|reload>
+    permission: roadboost.build
