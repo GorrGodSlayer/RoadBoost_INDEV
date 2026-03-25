@@ -92,7 +92,10 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
 
         int startX = player.getLocation().getBlockX();
         int startZ = player.getLocation().getBlockZ();
-        BridgeSession session = new BridgeSession(schematicData, lockedY, particle, startX, startZ, plugin.getLogger());
+        float yaw = player.getLocation().getYaw();
+int clearHeight = plugin.getConfig().getInt("bridge-clear-height", 32);
+int moduleLengthOverride = plugin.getConfig().getInt("bridge-module-length", 0);
+BridgeSession session = new BridgeSession(schematicData, lockedY, particle, startX, startZ, yaw, plugin.getLogger(), clearHeight, moduleLengthOverride);
         session.stampFirst(player);
         plugin.getBridgeSessionManager().add(player.getUniqueId(), session);
 
