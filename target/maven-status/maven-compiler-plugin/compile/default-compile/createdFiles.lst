@@ -1,9 +1,13 @@
 com\roadboost\managers\RoadManager.class
 com\roadboost\managers\RecordingSession.class
 com\roadboost\managers\WeightedBlockPicker.class
-com\roadboost\RoadBoostPlugin.class
+com\roadboost\bridge\BridgeSession.class
 com\roadboost\commands\RoadCommand.class
-com\roadboost\listeners\PlayerMoveListener.class
 com\roadboost\tasks\BoostTask.class
 com\roadboost\models\RoadBlock.class
+com\roadboost\commands\BridgeCommand.class
 com\roadboost\managers\SessionManager.class
+com\roadboost\bridge\BridgeSessionManager.class
+com\roadboost\RoadBoostPlugin.class
+com\roadboost\listeners\PlayerMoveListener.class
+com\roadboost\bridge\SchematicLoader.class

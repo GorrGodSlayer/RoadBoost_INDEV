@@ -1,7 +1,10 @@
 # RoadBoost Configuration
 
+# -------------------------------------------------------------------------
+# ROAD SETTINGS
+# -------------------------------------------------------------------------
+
 # Blocks used to build the road, with their relative weights.
-# The plugin will randomly pick from this list when placing each block.
 # Format: MATERIAL:WEIGHT  (higher weight = more common)
 road-blocks:
   - COBBLESTONE:40
@@ -9,20 +12,42 @@ road-blocks:
   - GRAVEL:20
   - COARSE_DIRT:10
 
-# How wide the road should be (in blocks) on each side of the player's path.
-# 0 = only the block the player walked on (1 block wide total)
-# 1 = 1 block on each side (3 blocks wide total)
+# How wide the road is on each side of the player's path.
+# 0 = only the block walked on, 1 = 3 blocks wide, 2 = 5 blocks wide, etc.
 road-width: 1
 
-# How many blocks behind the player to undo when using /road undo.
-# This is the radius around the player's feet that gets removed.
+# How many blocks around the player to remove when using /road undo.
 undo-radius: 5
 
-# Potion effects applied when a player walks on a road.
-# You can add as many effects as you like.
-# Amplifier 0 = level I, 1 = level II, etc.
-# Duration is in ticks (20 ticks = 1 second). Keep this short so it
-# feels continuous — the task reapplies it every second.
+# Particle shown on each block as the player records a road.
+# Set to NONE to disable.
+record-particle: HAPPY_VILLAGER
+
+# Particle shown when the road is finalised with /road stop.
+place-particle: HAPPY_VILLAGER
+
+# Sound played when /road stop is run.
+place-sound: BLOCK_NOTE_BLOCK_PLING
+
+# -------------------------------------------------------------------------
+# BRIDGE SETTINGS
+# -------------------------------------------------------------------------
+
+# Folder (inside the plugin data folder) where .schem files are stored.
+# Place your schematic files here and reference them by name (without extension).
+bridge-schematics-folder: schematics
+
+# How many blocks around the player to remove when undoing a bridge section.
+bridge-undo-radius: 5
+
+# Particle shown while recording a bridge.
+bridge-record-particle: END_ROD
+
+# -------------------------------------------------------------------------
+# BOOST SETTINGS
+# -------------------------------------------------------------------------
+
+# Potion effects applied when a player walks on a road OR bridge.
 effects:
   - type: SPEED
     amplifier: 1
@@ -31,18 +56,5 @@ effects:
     amplifier: 0
     duration: 40
 
-# How often (in ticks) to check if a player is standing on a road
-# and reapply effects. 20 = every second.
+# How often (in ticks) to check if a player is on a road/bridge and reapply effects.
 boost-check-interval: 20
-
-# Particle shown when the road is placed.
-# Set to NONE to disable.
-place-particle: HAPPY_VILLAGER
-
-# Sound played when recording stops and the road is placed.
-# Set to NONE to disable.
-place-sound: BLOCK_NOTE_BLOCK_PLING
-
-# Particle shown while recording a road (shown on each block as you walk).
-# Set to NONE to disable.
-record-particle: DUST
