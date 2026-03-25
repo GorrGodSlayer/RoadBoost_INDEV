@@ -37,7 +37,7 @@ public class PlayerMoveListener implements Listener {
         // --- Bridge recording ---
         BridgeSession bridgeSession = plugin.getBridgeSessionManager().get(uuid);
         if (bridgeSession != null) {
-            boolean autoEnd = bridgeSession.stamp(player, to, from);
+            boolean autoEnd = bridgeSession.onPlayerMove(player, from, to);
             if (autoEnd) {
                 plugin.getBridgeSessionManager().remove(uuid);
                 plugin.getBridgeCommand().commitSession(player, bridgeSession);

@@ -12,171 +12,288 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.logging.Logger;
 
-/**
- * Tracks a player walking a bridge path.
- *
- * Rules:
- * - The Y level is locked to where the player started.
- * - Each new block column the player enters stamps the schematic
- *   horizontally, aligned so the player's position is the RIGHT edge.
- * - The schematic is clipped at the bottom by existing terrain —
- *   blocks are only placed where there is currently air (or non-solid blocks).
- * - The session ends automatically when the player returns to natural ground
- *   at the same Y level, or manually via /bridge stop.
- */
 public class BridgeSession {
+
+    /** Block types considered vegetation — cleared before a module is pasted. */
+    private static final Set<org.bukkit.Material> VEGETATION = EnumSet.noneOf(org.bukkit.Material.class);
+    static {
+        // Logs and wood
+        for (org.bukkit.Material m : org.bukkit.Material.values()) {
+            String n = m.name();
+            if (!m.isBlock()) continue;
+            if (n.endsWith("_LOG") || n.endsWith("_WOOD") || n.endsWith("_LEAVES")
+                    || n.endsWith("_SAPLING") || n.endsWith("_BUSH")
+                    || n.contains("MUSHROOM") || n.contains("FUNGUS")
+                    || n.contains("NYLIUM") || n.contains("WARPED") || n.contains("CRIMSON")) {
+                VEGETATION.add(m);
+            }
+        }
+        // Grass, plants, flowers, vines
+        try {
+            VEGETATION.add(org.bukkit.Material.SHORT_GRASS);
+        } catch (Exception ignored) {
+            try { VEGETATION.add(org.bukkit.Material.valueOf("GRASS")); } catch (Exception ignored2) {}
+        }
+        try { VEGETATION.add(org.bukkit.Material.TALL_GRASS); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.FERN); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.LARGE_FERN); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.DEAD_BUSH); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.VINE); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.GLOW_LICHEN); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.HANGING_ROOTS); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.MOSS_BLOCK); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.MOSS_CARPET); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.AZALEA); } catch (Exception ignored) {}
+        try { VEGETATION.add(org.bukkit.Material.FLOWERING_AZALEA); } catch (Exception ignored) {}
+        // All flowers and small plants
+        for (org.bukkit.Material m : org.bukkit.Material.values()) {
+            if (!m.isBlock()) continue;
+            String n = m.name();
+            if (n.endsWith("_FLOWER") || n.endsWith("_TULIP") || n.endsWith("_ORCHID")
+                    || n.contains("DANDELION") || n.contains("POPPY") || n.contains("ALLIUM")
+                    || n.contains("BLUET") || n.contains("DAISY") || n.contains("CORNFLOWER")
+                    || n.contains("LILY") || n.contains("ROSE") || n.contains("SUNFLOWER")
+                    || n.contains("LILAC") || n.contains("PEONY") || n.contains("SPORE_BLOSSOM")
+                    || n.contains("BAMBOO") || n.contains("CACTUS") || n.contains("SUGAR_CANE")
+                    || n.contains("KELP") || n.contains("SEAGRASS") || n.contains("CORAL")) {
+                VEGETATION.add(m);
+            }
+        }
+    }
 
     private final Clipboard schematic;
     private final int lockedY;
     private final Particle particle;
+    private final Logger logger;
 
     private final List<RoadBlock> placed = new ArrayList<>();
-    private final LinkedHashSet<String> seenColumns = new LinkedHashSet<>();
+    private final Set<String> placedKeys = new HashSet<>();
 
-    // Schematic dimensions
-    private final int schemWidth;  // X size
-    private final int schemHeight; // Y size
-    private final int schemDepth;  // Z size
+    private int dirX = 0;
+    private int dirZ = 1;
+    private boolean directionLocked = false;
 
-    public BridgeSession(Clipboard schematic, int lockedY, Particle particle) {
+    private final int schemSizeX;
+    private final int schemSizeY;
+    private final int schemSizeZ;
+    private int moduleLength;
+
+    private int forwardSteps = 0;
+    private int nextStampAt;
+    private int stampedModules = 0;
+
+    private final int originX;
+    private final int originZ;
+
+    public BridgeSession(Clipboard schematic, int lockedY, Particle particle,
+                         int startX, int startZ, Logger logger) {
         this.schematic = schematic;
-        this.lockedY = lockedY;
-        this.particle = particle;
+        this.lockedY   = lockedY;
+        this.particle  = particle;
+        this.originX   = startX;
+        this.originZ   = startZ;
+        this.logger    = logger;
 
         BlockVector3 dims = schematic.getDimensions();
-        this.schemWidth  = dims.getBlockX();
-        this.schemHeight = dims.getBlockY();
-        this.schemDepth  = dims.getBlockZ();
+        this.schemSizeX = dims.getBlockX();
+        this.schemSizeY = dims.getBlockY();
+        this.schemSizeZ = dims.getBlockZ();
+        this.moduleLength = schemSizeZ;
+        this.nextStampAt = moduleLength - 1;
+
+        logger.info("[Bridge] Schematic size: " + schemSizeX + "x" + schemSizeY + "x" + schemSizeZ);
     }
 
-    /**
-     * Called each time the player enters a new block column.
-     * @return true if the bridge should auto-end (player back on solid ground at lockedY)
-     */
-    public boolean stamp(Player player, Block currentBlock, Block previousBlock) {
+    public void stampFirst(Player player) {
+        pasteModule(player.getWorld(), originX, originZ, dirX, dirZ);
+        stampedModules = 1;
+        nextStampAt = moduleLength - 1;
+        logger.info("[Bridge] Module 0 stamped at origin. moduleLength=" + moduleLength + " nextStampAt=" + nextStampAt);
+        spawnParticles(player.getWorld(), originX, originZ);
+    }
+
+    public boolean onPlayerMove(Player player, Block from, Block to) {
         World world = player.getWorld();
         int px = player.getLocation().getBlockX();
         int pz = player.getLocation().getBlockZ();
+        int stepX = to.getX() - from.getX();
+        int stepZ = to.getZ() - from.getZ();
 
-        // Check if player is back on natural terrain at the same Y — auto-end signal
-        Block underFeet = world.getBlockAt(px, lockedY - 1, pz);
-        if (underFeet.getType().isSolid() && !isOurBlock(underFeet.getLocation())) {
-            return true; // signal to end session
+        // Lock direction on first step
+        if (!directionLocked) {
+            if (stepX == 0 && stepZ == 0) return false;
+
+            if (Math.abs(stepX) >= Math.abs(stepZ)) {
+                dirX = (int) Math.signum(stepX);
+                dirZ = 0;
+            } else {
+                dirX = 0;
+                dirZ = (int) Math.signum(stepZ);
+            }
+            directionLocked = true;
+            moduleLength = (dirZ != 0) ? schemSizeZ : schemSizeX;
+            nextStampAt = moduleLength - 1;
+
+            logger.info("[Bridge] Direction locked: dirX=" + dirX + " dirZ=" + dirZ
+                    + " moduleLength=" + moduleLength + " nextStampAt=" + nextStampAt);
+
+            // Redo module 0 with correct direction
+            for (RoadBlock rb : placed) {
+                rb.getLocation().getBlock().setBlockData(rb.getOriginalData());
+            }
+            placed.clear();
+            placedKeys.clear();
+            stampedModules = 0;
+            forwardSteps = 0;
+
+            pasteModule(world, originX, originZ, dirX, dirZ);
+            stampedModules = 1;
+            spawnParticles(world, originX, originZ);
+            return false;
         }
 
-        String colKey = px + "," + pz;
-        if (seenColumns.contains(colKey)) return false;
-        seenColumns.add(colKey);
+        // Only count forward steps on locked axis
+        int axisStep = (dirZ != 0) ? stepZ * dirZ : stepX * dirX;
+        if (axisStep <= 0) return false;
 
-        // Determine movement direction for orientation
-        int dx = currentBlock.getX() - previousBlock.getX();
-        int dz = currentBlock.getZ() - previousBlock.getZ();
+        forwardSteps += axisStep;
 
-        // Stamp the schematic at this column
-        pasteSchematic(world, px, pz, dx, dz);
+        logger.info("[Bridge] forwardSteps=" + forwardSteps + " nextStampAt=" + nextStampAt
+                + " stampedModules=" + stampedModules);
 
-        // Particle effect
-        if (particle != null) {
-            Location particleLoc = new Location(world, px + 0.5, lockedY + 1.2, pz + 0.5);
-            try {
-                world.spawnParticle(particle, particleLoc, 6, 0.3, 0.1, 0.3, 0);
-            } catch (Exception ignored) {}
+        // Auto-end: natural solid ground
+        Block underFeet = world.getBlockAt(px, lockedY - 1, pz);
+        if (underFeet.getType().isSolid()
+                && !placedKeys.contains(key(px, lockedY - 1, pz))) {
+            logger.info("[Bridge] Auto-end triggered at " + px + "," + pz);
+            return true;
+        }
+
+        // Stamp next module at seam
+        if (forwardSteps >= nextStampAt) {
+            int anchorX = originX + dirX * (stampedModules * moduleLength);
+            int anchorZ = originZ + dirZ * (stampedModules * moduleLength);
+            logger.info("[Bridge] Stamping module " + stampedModules + " at anchor "
+                    + anchorX + "," + anchorZ);
+            pasteModule(world, anchorX, anchorZ, dirX, dirZ);
+            spawnParticles(world, anchorX, anchorZ);
+            stampedModules++;
+            nextStampAt += moduleLength;
+            logger.info("[Bridge] Next stamp at forwardSteps=" + nextStampAt);
         }
 
         return false;
     }
 
+    public boolean isActiveBridgeBlock(Location loc) {
+        return placedKeys.contains(key(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ()));
+    }
+
     /**
-     * Pastes the schematic with:
-     * - Player position = RIGHT edge (max X of schematic)
-     * - Top of schematic = lockedY (surface the player walks on)
-     * - Bottom clipped by terrain (skip blocks where terrain is solid)
-     *
-     * The schematic is rotated to face the direction of travel.
+     * Clears all vegetation in the column footprint of the module PLUS a generous
+     * height above lockedY, so custom trees don't poke through the bridge.
      */
-    private void pasteSchematic(World world, int px, int pz, int dx, int dz) {
-        BlockVector3 origin = schematic.getOrigin();
+    private void clearVegetation(World world, int anchorX, int anchorZ, int dx, int dz) {
+        int clearHeightAbove = 32; // configurable via bridge-clear-height in config
+
+        for (int sx = 0; sx < schemSizeX; sx++) {
+            for (int sz = 0; sz < schemSizeZ; sz++) {
+                int relX = sx - (schemSizeX - 1);
+                int[] rotated = rotate(relX, sz, dx, dz);
+                int worldX = anchorX + rotated[0];
+                int worldZ = anchorZ + rotated[1];
+
+                // Clear from lockedY upward
+                for (int dy = 0; dy <= clearHeightAbove; dy++) {
+                    int worldY = lockedY + dy;
+                    if (worldY > world.getMaxHeight()) break;
+                    Block block = world.getBlockAt(worldX, worldY, worldZ);
+                    if (VEGETATION.contains(block.getType())) {
+                        // Save original so it can be restored on /road undo
+                        placed.add(new RoadBlock(block.getLocation(), block.getBlockData().clone()));
+                        placedKeys.add(key(worldX, worldY, worldZ));
+                        block.setType(org.bukkit.Material.AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    private void pasteModule(World world, int anchorX, int anchorZ, int dx, int dz) {
+        // Clear trees and vegetation before placing blocks
+        clearVegetation(world, anchorX, anchorZ, dx, dz);
         BlockVector3 min = schematic.getMinimumPoint();
 
-        // Iterate every block in the schematic
-        for (int sy = 0; sy < schemHeight; sy++) {
-            int worldY = lockedY - (schemHeight - 1 - sy); // top of schem = lockedY
-
+        for (int sy = 0; sy < schemSizeY; sy++) {
+            int worldY = lockedY - (schemSizeY - 1 - sy);
             if (worldY < world.getMinHeight() || worldY > world.getMaxHeight()) continue;
 
-            for (int sx = 0; sx < schemWidth; sx++) {
-                for (int sz = 0; sz < schemDepth; sz++) {
+            for (int sx = 0; sx < schemSizeX; sx++) {
+                for (int sz = 0; sz < schemSizeZ; sz++) {
 
-                    // Rotate offset based on movement direction
-                    int[] rotated = rotate(sx - (schemWidth - 1), sz, dx, dz);
-                    int worldX = px + rotated[0];
-                    int worldZ = pz + rotated[1];
+                    int relX = sx - (schemSizeX - 1);
+                    int[] rotated = rotate(relX, sz, dx, dz);
+                    int worldX = anchorX + rotated[0];
+                    int worldZ = anchorZ + rotated[1];
 
-                    // Clip bottom: don't place if terrain below is solid
-                    Block terrainCheck = world.getBlockAt(worldX, worldY - 1, worldZ);
-                    if (worldY < lockedY && terrainCheck.getType().isSolid()) continue;
+                    if (worldY < lockedY) {
+                        Block below = world.getBlockAt(worldX, worldY - 1, worldZ);
+                        if (below.getType().isSolid()
+                                && !placedKeys.contains(key(worldX, worldY - 1, worldZ))) {
+                            continue;
+                        }
+                    }
 
-                    // Get the schematic block
                     BlockVector3 schemPos = BlockVector3.at(
                             min.getBlockX() + sx,
                             min.getBlockY() + sy,
                             min.getBlockZ() + sz
                     );
                     BlockState state = schematic.getBlock(schemPos);
+                    String blockId = state.getBlockType().getId();
+                    if (blockId.contains("air")) continue;
+
                     Material mat = Material.matchMaterial(
-                            state.getBlockType().getId().replace("minecraft:", "").toUpperCase()
+                            blockId.replace("minecraft:", "").toUpperCase()
                     );
-                    if (mat == null || mat == Material.AIR) continue;
+                    if (mat == null || !mat.isBlock()) continue;
 
                     Block target = world.getBlockAt(worldX, worldY, worldZ);
-                    String key = worldX + "," + worldY + "," + worldZ;
+                    String k = key(worldX, worldY, worldZ);
+                    if (placedKeys.contains(k)) continue;
 
-                    if (isOurBlock(target.getLocation())) continue;
-
-                    // Save original and place
                     placed.add(new RoadBlock(target.getLocation(), target.getBlockData().clone()));
                     target.setType(mat);
-                    seenColumns.add(key); // also mark as seen so road-detection works
+                    placedKeys.add(k);
                 }
             }
         }
     }
 
-    /**
-     * Rotates a schematic offset (relX, relZ) to align with movement direction.
-     * dx/dz is the normalised movement vector.
-     */
     private int[] rotate(int relX, int relZ, int dx, int dz) {
-        // Normalize
-        if (dx != 0) dx = dx / Math.abs(dx);
-        if (dz != 0) dz = dz / Math.abs(dz);
-
-        // Facing +Z (south): no rotation needed
-        // Facing -Z (north): rotate 180
-        // Facing +X (east):  rotate 90 CW
-        // Facing -X (west):  rotate 90 CCW
-        if (dz == 1)       return new int[]{ relX,  relZ};  // south
-        if (dz == -1)      return new int[]{-relX, -relZ};  // north
-        if (dx == 1)       return new int[]{ relZ, -relX};  // east
-        if (dx == -1)      return new int[]{-relZ,  relX};  // west
+        if (dz ==  1) return new int[]{ relX,  relZ};
+        if (dz == -1) return new int[]{-relX, -relZ};
+        if (dx ==  1) return new int[]{ relZ, -relX};
+        if (dx == -1) return new int[]{-relZ,  relX};
         return new int[]{relX, relZ};
     }
 
-    private boolean isOurBlock(Location loc) {
-        String key = loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
-        for (RoadBlock rb : placed) {
-            Location rl = rb.getLocation();
-            if (rl.getBlockX() == loc.getBlockX() &&
-                rl.getBlockY() == loc.getBlockY() &&
-                rl.getBlockZ() == loc.getBlockZ()) return true;
-        }
-        return false;
+    private void spawnParticles(World world, int x, int z) {
+        if (particle == null) return;
+        Location loc = new Location(world, x + 0.5, lockedY + 1.5, z + 0.5);
+        try { world.spawnParticle(particle, loc, 12, 1.0, 0.1, 1.0, 0); }
+        catch (Exception ignored) {}
     }
 
-    public int getLockedY() { return lockedY; }
+    private String key(int x, int y, int z) { return x + "," + y + "," + z; }
+
+    public int getLockedY()            { return lockedY; }
     public List<RoadBlock> getPlaced() { return placed; }
-    public int size() { return placed.size(); }
+    public int size()                  { return placed.size(); }
 }

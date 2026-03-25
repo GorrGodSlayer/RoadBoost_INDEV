@@ -43,6 +43,10 @@ bridge-undo-radius: 5
 # Particle shown while recording a bridge.
 bridge-record-particle: END_ROD
 
+# How many blocks above the bridge surface to clear vegetation (trees, leaves, etc.)
+# Increase this if custom trees are very tall.
+bridge-clear-height: 32
+
 # -------------------------------------------------------------------------
 # BOOST SETTINGS
 # -------------------------------------------------------------------------

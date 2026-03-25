@@ -3,6 +3,7 @@ package com.roadboost.commands;
 import com.roadboost.RoadBoostPlugin;
 import com.roadboost.bridge.BridgeSession;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
+
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Particle;
@@ -74,8 +75,8 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         }
 
         String schemName = args[1];
-        Clipboard clipboard = plugin.getSchematicLoader().load(schemName);
-        if (clipboard == null) {
+        Clipboard schematicData = plugin.getSchematicLoader().load(schemName);
+        if (schematicData == null) {
             player.sendMessage(Component.text("Schematic '" + schemName + "' not found. Use /bridge list to see available schematics.", NamedTextColor.RED));
             return;
         }
@@ -89,7 +90,10 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             catch (IllegalArgumentException ignored) {}
         }
 
-        BridgeSession session = new BridgeSession(clipboard, lockedY, particle);
+        int startX = player.getLocation().getBlockX();
+        int startZ = player.getLocation().getBlockZ();
+        BridgeSession session = new BridgeSession(schematicData, lockedY, particle, startX, startZ, plugin.getLogger());
+        session.stampFirst(player);
         plugin.getBridgeSessionManager().add(player.getUniqueId(), session);
 
         player.sendMessage(Component.text("Bridge recording started using schematic '", NamedTextColor.GREEN)
