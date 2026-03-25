@@ -1,5 +1,5 @@
 package com.roadboost.commands;
-import org.bukkit.Particle;
+
 import com.roadboost.RoadBoostPlugin;
 import com.roadboost.managers.RecordingSession;
 import com.roadboost.managers.WeightedBlockPicker;
@@ -69,19 +69,21 @@ public class RoadCommand implements CommandExecutor, TabCompleter {
 
         // Build the weighted picker and create a session
         WeightedBlockPicker picker = new WeightedBlockPicker(
-        plugin.getConfig().getStringList("road-blocks")
-);
-int width = plugin.getConfig().getInt("road-width", 1);
+                plugin.getConfig().getStringList("road-blocks")
+        );
+        int width          = plugin.getConfig().getInt("road-width", 1);
+        int corridorHeight  = plugin.getConfig().getInt("road-corridor-height", 4);
+        int forestRadius    = plugin.getConfig().getInt("road-forest-radius", 5);
 
-Particle particle = null;
-String particleName = plugin.getConfig().getString("record-particle", "DUST");
-if (!particleName.equalsIgnoreCase("NONE")) {
-    try {
-        particle = Particle.valueOf(particleName.toUpperCase());
-    } catch (IllegalArgumentException ignored) {}
-}
+        Particle particle = null;
+        String particleName = plugin.getConfig().getString("record-particle", "HAPPY_VILLAGER");
+        if (!particleName.equalsIgnoreCase("NONE")) {
+            try { particle = org.bukkit.Particle.valueOf(particleName.toUpperCase()); }
+            catch (IllegalArgumentException ignored) {}
+        }
 
-RecordingSession session = new RecordingSession(picker, width, particle);
+        RecordingSession session = new RecordingSession(picker, width, particle, corridorHeight, forestRadius);
+
         plugin.getSessionManager().addSession(player.getUniqueId(), session);
         player.sendMessage(Component.text("Road recording started! Walk your desired path, then run ", NamedTextColor.GREEN)
                 .append(Component.text("/road stop", NamedTextColor.YELLOW))
@@ -105,7 +107,8 @@ RecordingSession session = new RecordingSession(picker, width, particle);
             return;
         }
 
-        // Commit the road
+        // Smooth and place all blocks
+        session.commit();
         plugin.getRoadManager().addRoadBlocks(session.getRecorded());
 
         // Visual / audio feedback

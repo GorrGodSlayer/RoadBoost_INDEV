@@ -19,6 +19,14 @@ road-width: 1
 # How many blocks around the player to remove when using /road undo.
 undo-radius: 5
 
+# How many blocks tall to carve through hills when recording a road.
+# Blocks above the road surface up to this height will be removed.
+road-corridor-height: 4
+
+# Radius (in blocks) around the player to clear vegetation while recording.
+# Uses a circular area. Set to 0 to disable.
+road-forest-radius: 5
+
 # Particle shown on each block as the player records a road.
 # Set to NONE to disable.
 record-particle: HAPPY_VILLAGER
@@ -42,6 +50,11 @@ bridge-undo-radius: 5
 
 # Particle shown while recording a bridge.
 bridge-record-particle: END_ROD
+
+# Override the module repeat length (in blocks).
+# Set to 0 to auto-detect from the schematic Z size.
+# Use this if modules overlap or have a gap between them.
+bridge-module-length: 0
 
 # How many blocks above the bridge surface to clear vegetation (trees, leaves, etc.)
 # Increase this if custom trees are very tall.
