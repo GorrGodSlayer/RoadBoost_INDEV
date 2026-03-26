@@ -1,6 +1,8 @@
 package com.roadboost.managers;
 
 import com.roadboost.models.RoadBlock;
+import com.roadboost.models.RoadDefinition;
+import com.roadboost.models.RoadDefinition.SegmentType;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -10,16 +12,17 @@ import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
+/**
+ * Tracks an active road recording session.
+ * Stores waypoints (for BlueMap line) and placed blocks (for undo).
+ * Bridge sessions can be attached mid-road — their waypoints are tagged BRIDGE.
+ */
 public class RecordingSession {
 
     // -------------------------------------------------------------------------
-    // Vegetation set
+    // Vegetation
     // -------------------------------------------------------------------------
     private static final Set<Material> VEGETATION = EnumSet.noneOf(Material.class);
     static {
@@ -54,25 +57,66 @@ public class RecordingSession {
     private final Set<String> seenKeys = new HashSet<>();
     private final List<RoadBlock> recorded = new ArrayList<>();
 
+    // Ordered waypoints for BlueMap line — tagged ROAD or BRIDGE
+    private final List<RoadDefinition.Waypoint> waypoints = new ArrayList<>();
+
     private final WeightedBlockPicker picker;
     private final int width;
     private final Particle particle;
     private final int corridorHeight;
     private final int forestRadius;
 
+    // Road identity — set when /road stop <to> is called
+    private final String fromName;
+    private String toName;
+
+    // Unique road ID (timestamp-based)
+    private final String roadId;
+
+    // Whether a bridge session is currently active on this road
+    private boolean bridgeActive = false;
+
     public RecordingSession(WeightedBlockPicker picker, int width, Particle particle,
-                            int corridorHeight, int forestRadius) {
+                            int corridorHeight, int forestRadius, String fromName) {
         this.picker         = picker;
         this.width          = width;
         this.particle       = particle;
         this.corridorHeight = corridorHeight;
         this.forestRadius   = forestRadius;
+        this.fromName       = fromName;
+        this.roadId         = "road_" + System.currentTimeMillis();
     }
 
     // -------------------------------------------------------------------------
-    // record() — called every time the player crosses a block boundary
+    // Bridge attachment
     // -------------------------------------------------------------------------
+
+    /** Called when /bridge start is run while this road session is active. */
+    public void setBridgeActive(boolean active) { this.bridgeActive = active; }
+    public boolean isBridgeActive()             { return bridgeActive; }
+
+    /**
+     * Merges bridge blocks and waypoints into this road session.
+     * Called when /bridge stop is run mid-road.
+     */
+    public void mergeBridge(List<RoadBlock> bridgeBlocks,
+                            List<Location> bridgeWaypoints) {
+        recorded.addAll(bridgeBlocks);
+        for (Location loc : bridgeWaypoints) {
+            waypoints.add(new RoadDefinition.Waypoint(loc, SegmentType.BRIDGE));
+            seenKeys.add(loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
+        }
+        bridgeActive = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Recording
+    // -------------------------------------------------------------------------
+
     public void record(Player player, Block current, Block previous) {
+        // If a bridge is active, road recording pauses — bridge handles movement
+        if (bridgeActive) return;
+
         World world = player.getWorld();
         int px = player.getLocation().getBlockX();
         int py = player.getLocation().getBlockY() - 1;
@@ -80,20 +124,20 @@ public class RecordingSession {
 
         int dx = current.getX() - previous.getX();
         int dz = current.getZ() - previous.getZ();
-
         int perpX = dz != 0 ? 1 : 0;
         int perpZ = dx != 0 ? 1 : 0;
 
-        // Forest clearing around the player
+        // Record waypoint for BlueMap
+        waypoints.add(new RoadDefinition.Waypoint(
+                new Location(world, px, py, pz), SegmentType.ROAD));
+
         clearForest(world, px, py, pz);
 
-        // Place road blocks across width
         for (int offset = -width; offset <= width; offset++) {
             int bx = px + perpX * offset;
             int bz = pz + perpZ * offset;
             int by = py;
 
-            // Carve corridor above
             clearCorridor(world, bx, by, bz);
 
             Block target = world.getBlockAt(bx, by, bz);
@@ -105,7 +149,6 @@ public class RecordingSession {
             target.setType(picker.pick());
             recorded.add(new RoadBlock(target.getLocation(), original));
 
-            // Particles
             if (particle != null) {
                 Location particleLoc = target.getLocation().add(0.5, 1.1, 0.5);
                 try {
@@ -120,14 +163,21 @@ public class RecordingSession {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // commit() — no-op in simple mode, kept so RoadCommand compiles
-    // -------------------------------------------------------------------------
-    public void commit() {}
+    public void commit() {} // kept for compatibility
 
     // -------------------------------------------------------------------------
-    // Hill cutting — clears solid blocks above each road block
+    // Build RoadDefinition for storage + BlueMap
     // -------------------------------------------------------------------------
+
+    public RoadDefinition buildDefinition(String toName) {
+        this.toName = toName;
+        return new RoadDefinition(roadId, fromName, toName, waypoints);
+    }
+
+    // -------------------------------------------------------------------------
+    // Corridor + forest clearing
+    // -------------------------------------------------------------------------
+
     private void clearCorridor(World world, int bx, int by, int bz) {
         for (int dy = 1; dy <= corridorHeight; dy++) {
             Block above = world.getBlockAt(bx, by + dy, bz);
@@ -142,9 +192,6 @@ public class RecordingSession {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Forest clearing — removes vegetation in a circular radius
-    // -------------------------------------------------------------------------
     private void clearForest(World world, int px, int py, int pz) {
         for (int rx = -forestRadius; rx <= forestRadius; rx++) {
             for (int rz = -forestRadius; rz <= forestRadius; rz++) {
@@ -165,6 +212,11 @@ public class RecordingSession {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Getters
+    // -------------------------------------------------------------------------
     public List<RoadBlock> getRecorded() { return recorded; }
     public int size()                    { return recorded.size(); }
+    public String getFromName()          { return fromName; }
+    public String getRoadId()            { return roadId; }
 }

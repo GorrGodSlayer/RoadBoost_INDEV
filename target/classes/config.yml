@@ -75,3 +75,39 @@ effects:
 
 # How often (in ticks) to check if a player is on a road/bridge and reapply effects.
 boost-check-interval: 20
+
+# -------------------------------------------------------------------------
+# BLUEMAP INTEGRATION
+# -------------------------------------------------------------------------
+
+# Whether to show roads and bridges on BlueMap.
+# Requires BlueMap to be installed. Safe to leave true if BlueMap is absent.
+bluemap-enabled: true
+
+# Color of road lines on BlueMap (hex, with alpha: AARRGGBB)
+bluemap-road-color: "#FF888888"
+
+# Color of bridge lines on BlueMap
+bluemap-bridge-color: "#FF4488FF"
+
+# Width of the line in pixels on the map
+bluemap-line-width: 3
+
+# -------------------------------------------------------------------------
+# BLUEMAP SETTINGS
+# -------------------------------------------------------------------------
+
+# Color of road lines on BlueMap (hex)
+bluemap-road-color: "#FF0000"
+
+# Color of bridge lines on BlueMap (hex)
+bluemap-bridge-color: "#FF0000"
+
+# Width of road lines
+bluemap-road-line-width: 3.0
+
+# Width of bridge parallel lines
+bluemap-bridge-line-width: 2.0
+
+# How far apart the two parallel bridge lines are (in blocks)
+bluemap-bridge-parallel-offset: 2.5

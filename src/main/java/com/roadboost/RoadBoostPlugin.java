@@ -1,5 +1,6 @@
 package com.roadboost;
 
+import com.roadboost.bluemap.BlueMapIntegration;
 import com.roadboost.bridge.BridgeSessionManager;
 import com.roadboost.bridge.SchematicLoader;
 import com.roadboost.commands.BridgeCommand;
@@ -20,44 +21,46 @@ public class RoadBoostPlugin extends JavaPlugin {
     private SchematicLoader schematicLoader;
     private BoostTask boostTask;
     private BridgeCommand bridgeCommand;
+    private BlueMapIntegration blueMapIntegration;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        // Managers
-        this.roadManager          = new RoadManager(this);
-        this.sessionManager       = new SessionManager();
-        this.bridgeSessionManager = new BridgeSessionManager();
+        roadManager          = new RoadManager(this);
+        sessionManager       = new SessionManager();
+        bridgeSessionManager = new BridgeSessionManager();
 
-        // Schematic loader
         String folderName = getConfig().getString("bridge-schematics-folder", "schematics");
-        File schematicsFolder = new File(getDataFolder(), folderName);
-        this.schematicLoader = new SchematicLoader(schematicsFolder, getLogger());
+        schematicLoader = new SchematicLoader(new File(getDataFolder(), folderName), getLogger());
 
-        // Load persisted roads
         roadManager.loadRoads();
 
-        // Listeners
+        // BlueMap integration — use onEnable callback so API is guaranteed ready
+        if (getServer().getPluginManager().getPlugin("BlueMap") != null) {
+            blueMapIntegration = new BlueMapIntegration(this);
+            de.bluecolored.bluemap.api.BlueMapAPI.onEnable(api -> {
+                getLogger().info("BlueMap API ready — road markers enabled.");
+                // Re-register all existing roads on BlueMap enable/reload
+                for (com.roadboost.models.RoadDefinition def : roadManager.getRoadDefinitions().values()) {
+                    blueMapIntegration.updateRoad(def);
+                }
+            });
+        } else {
+            getLogger().info("BlueMap not found — map markers disabled.");
+        }
+
         getServer().getPluginManager().registerEvents(new PlayerMoveListener(this), this);
 
-        // Commands
         RoadCommand roadCommand = new RoadCommand(this);
-        var roadCmd = getCommand("road");
-        if (roadCmd != null) {
-            roadCmd.setExecutor(roadCommand);
-            roadCmd.setTabCompleter(roadCommand);
-        }
+        var rc = getCommand("road");
+        if (rc != null) { rc.setExecutor(roadCommand); rc.setTabCompleter(roadCommand); }
 
-        this.bridgeCommand = new BridgeCommand(this);
-        var bridgeCmd = getCommand("bridge");
-        if (bridgeCmd != null) {
-            bridgeCmd.setExecutor(bridgeCommand);
-            bridgeCmd.setTabCompleter(bridgeCommand);
-        }
+        bridgeCommand = new BridgeCommand(this);
+        var bc = getCommand("bridge");
+        if (bc != null) { bc.setExecutor(bridgeCommand); bc.setTabCompleter(bridgeCommand); }
 
-        // Boost task
-        this.boostTask = new BoostTask(this);
+        boostTask = new BoostTask(this);
         long interval = getConfig().getLong("boost-check-interval", 20L);
         boostTask.runTaskTimer(this, interval, interval);
 
@@ -66,12 +69,10 @@ public class RoadBoostPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Commit open road sessions
         for (var entry : sessionManager.getAllSessions().entrySet()) {
             var s = entry.getValue();
             if (s.size() > 0) roadManager.addRoadBlocks(s.getRecorded());
         }
-        // Commit open bridge sessions
         for (var entry : bridgeSessionManager.allMap().entrySet()) {
             var s = entry.getValue();
             if (s.size() > 0) roadManager.addRoadBlocks(s.getPlaced());
@@ -80,14 +81,11 @@ public class RoadBoostPlugin extends JavaPlugin {
         getLogger().info("RoadBoost disabled.");
     }
 
-    // -------------------------------------------------------------------------
-    // Getters
-    // -------------------------------------------------------------------------
-
-    public RoadManager getRoadManager()                 { return roadManager; }
-    public SessionManager getSessionManager()           { return sessionManager; }
+    public RoadManager getRoadManager()                   { return roadManager; }
+    public SessionManager getSessionManager()             { return sessionManager; }
     public BridgeSessionManager getBridgeSessionManager() { return bridgeSessionManager; }
-    public SchematicLoader getSchematicLoader()         { return schematicLoader; }
-    public BoostTask getBoostTask()                     { return boostTask; }
-    public BridgeCommand getBridgeCommand()             { return bridgeCommand; }
+    public SchematicLoader getSchematicLoader()           { return schematicLoader; }
+    public BoostTask getBoostTask()                       { return boostTask; }
+    public BridgeCommand getBridgeCommand()               { return bridgeCommand; }
+    public BlueMapIntegration getBlueMapIntegration()     { return blueMapIntegration; }
 }

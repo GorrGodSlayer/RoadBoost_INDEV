@@ -5,9 +5,13 @@ com\roadboost\bridge\BridgeSession.class
 com\roadboost\commands\RoadCommand.class
 com\roadboost\tasks\BoostTask.class
 com\roadboost\models\RoadBlock.class
+com\roadboost\bluemap\BlueMapIntegration.class
 com\roadboost\commands\BridgeCommand.class
 com\roadboost\managers\SessionManager.class
 com\roadboost\bridge\BridgeSessionManager.class
 com\roadboost\RoadBoostPlugin.class
 com\roadboost\listeners\PlayerMoveListener.class
+com\roadboost\models\RoadDefinition$Waypoint.class
+com\roadboost\models\RoadDefinition.class
+com\roadboost\models\RoadDefinition$SegmentType.class
 com\roadboost\bridge\SchematicLoader.class

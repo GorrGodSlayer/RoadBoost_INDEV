@@ -1,7 +1,9 @@
 package com.roadboost.managers;
 
-import com.roadboost.RoadBoostPlugin;
 import com.roadboost.models.RoadBlock;
+import com.roadboost.models.RoadDefinition;
+import com.roadboost.models.RoadDefinition.Waypoint;
+import com.roadboost.RoadBoostPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -13,21 +15,23 @@ import java.io.IOException;
 import java.util.*;
 import java.util.logging.Level;
 
-/**
- * Owns the master set of all road blocks across all worlds.
- * Persists data to roads.yml so roads survive server restarts.
- */
 public class RoadManager {
 
     private final RoadBoostPlugin plugin;
     private final File dataFile;
     private YamlConfiguration dataConfig;
 
-    // Keyed by "world,x,y,z" for O(1) lookups
+    // All placed road blocks keyed by "world,x,y,z"
     private final Map<String, RoadBlock> roadBlocks = new HashMap<>();
 
+    // Road definitions keyed by road ID
+    private final Map<String, RoadDefinition> roadDefinitions = new HashMap<>();
+
+    // Block key -> road ID for fast road-name lookup
+    private final Map<String, String> blockToRoad = new HashMap<>();
+
     public RoadManager(RoadBoostPlugin plugin) {
-        this.plugin = plugin;
+        this.plugin   = plugin;
         this.dataFile = new File(plugin.getDataFolder(), "roads.yml");
     }
 
@@ -39,59 +43,120 @@ public class RoadManager {
         if (!dataFile.exists()) return;
         dataConfig = YamlConfiguration.loadConfiguration(dataFile);
 
-        List<Map<?, ?>> list = dataConfig.getMapList("roads");
-        for (Map<?, ?> entry : list) {
+        // Load blocks
+        List<Map<?, ?>> blockList = dataConfig.getMapList("blocks");
+        for (Map<?, ?> entry : blockList) {
             try {
                 String worldName = (String) entry.get("world");
                 World world = Bukkit.getWorld(worldName);
                 if (world == null) continue;
-
                 int x = (int) entry.get("x");
                 int y = (int) entry.get("y");
                 int z = (int) entry.get("z");
-                String originalDataStr = (String) entry.get("original");
-
+                String originalData = (String) entry.get("original");
+                String roadId = (String) entry.get("roadId");
                 Location loc = new Location(world, x, y, z);
-                var originalData = Bukkit.createBlockData(originalDataStr);
-                RoadBlock rb = new RoadBlock(loc, originalData);
-                roadBlocks.put(key(loc), rb);
+                RoadBlock rb = new RoadBlock(loc, Bukkit.createBlockData(originalData));
+                String k = key(loc);
+                roadBlocks.put(k, rb);
+                if (roadId != null) blockToRoad.put(k, roadId);
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to load a road block entry.", e);
+                plugin.getLogger().log(Level.WARNING, "Failed to load road block.", e);
             }
         }
 
-        plugin.getLogger().info("Loaded " + roadBlocks.size() + " road blocks.");
+        // Load definitions
+        List<Map<?, ?>> defList = dataConfig.getMapList("definitions");
+        for (Map<?, ?> entry : defList) {
+            try {
+                String id       = (String) entry.get("id");
+                String from     = (String) entry.get("from");
+                String to       = (String) entry.get("to");
+                @SuppressWarnings("unchecked")
+                List<Map<?, ?>> wps = (List<Map<?, ?>>) entry.get("waypoints");
+                List<Waypoint> waypoints = new ArrayList<>();
+                if (wps != null) {
+                    for (Map<?, ?> wp : wps) {
+                        double wx = ((Number) wp.get("x")).doubleValue();
+                        double wy = ((Number) wp.get("y")).doubleValue();
+                        double wz = ((Number) wp.get("z")).doubleValue();
+                        String world = (String) wp.get("world");
+                        Object typeObj = wp.get("type");
+                        RoadDefinition.SegmentType type = RoadDefinition.SegmentType.valueOf(
+                                typeObj != null ? typeObj.toString() : "ROAD");
+                        waypoints.add(new Waypoint(wx, wy, wz, world, type));
+                    }
+                }
+                roadDefinitions.put(id, new RoadDefinition(id, from, to, waypoints));
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to load road definition.", e);
+            }
+        }
+
+        plugin.getLogger().info("Loaded " + roadBlocks.size() + " road blocks and "
+                + roadDefinitions.size() + " road definitions.");
     }
 
     public void saveRoads() {
         if (dataConfig == null) dataConfig = new YamlConfiguration();
 
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (RoadBlock rb : roadBlocks.values()) {
+        // Save blocks
+        List<Map<String, Object>> blockList = new ArrayList<>();
+        for (Map.Entry<String, RoadBlock> entry : roadBlocks.entrySet()) {
+            RoadBlock rb = entry.getValue();
             Location loc = rb.getLocation();
             if (loc.getWorld() == null) continue;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("world", loc.getWorld().getName());
-            entry.put("x", loc.getBlockX());
-            entry.put("y", loc.getBlockY());
-            entry.put("z", loc.getBlockZ());
-            entry.put("original", rb.getOriginalData().getAsString());
-            list.add(entry);
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("world", loc.getWorld().getName());
+            map.put("x", loc.getBlockX());
+            map.put("y", loc.getBlockY());
+            map.put("z", loc.getBlockZ());
+            map.put("original", rb.getOriginalData().getAsString());
+            String roadId = blockToRoad.get(entry.getKey());
+            if (roadId != null) map.put("roadId", roadId);
+            blockList.add(map);
         }
+        dataConfig.set("blocks", blockList);
 
-        dataConfig.set("roads", list);
-        try {
-            dataConfig.save(dataFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save roads.yml!", e);
+        // Save definitions
+        List<Map<String, Object>> defList = new ArrayList<>();
+        for (RoadDefinition def : roadDefinitions.values()) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", def.getId());
+            map.put("from", def.getFromName());
+            map.put("to", def.getToName());
+            List<Map<String, Object>> wps = new ArrayList<>();
+            for (Waypoint wp : def.getWaypoints()) {
+                Map<String, Object> wm = new LinkedHashMap<>();
+                wm.put("x", wp.x); wm.put("y", wp.y); wm.put("z", wp.z);
+                wm.put("world", wp.world);
+                wm.put("type", wp.type.name());
+                wps.add(wm);
+            }
+            map.put("waypoints", wps);
+            defList.add(map);
         }
+        dataConfig.set("definitions", defList);
+
+        try { dataConfig.save(dataFile); }
+        catch (IOException e) { plugin.getLogger().log(Level.SEVERE, "Could not save roads.yml!", e); }
     }
 
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
-    /** Register a collection of road blocks (called when a player stops recording). */
+    public void addRoad(RoadDefinition def, Collection<RoadBlock> blocks) {
+        for (RoadBlock rb : blocks) {
+            String k = key(rb.getLocation());
+            roadBlocks.put(k, rb);
+            blockToRoad.put(k, def.getId());
+        }
+        roadDefinitions.put(def.getId(), def);
+        saveRoads();
+    }
+
+    // Legacy — for bridge commit without a named road
     public void addRoadBlocks(Collection<RoadBlock> blocks) {
         for (RoadBlock rb : blocks) {
             roadBlocks.put(key(rb.getLocation()), rb);
@@ -99,43 +164,40 @@ public class RoadManager {
         saveRoads();
     }
 
-    /** Returns true if the given block location is part of a road. */
     public boolean isRoad(Location loc) {
         return roadBlocks.containsKey(key(loc));
     }
 
-    /**
-     * Remove all road blocks within {@code radius} of {@code centre},
-     * restoring original blocks.
-     * @return Number of blocks removed.
-     */
+    /** Returns the RoadDefinition for the block at the given location, or null. */
+    public RoadDefinition getRoadAt(Location loc) {
+        String roadId = blockToRoad.get(key(loc));
+        if (roadId == null) return null;
+        return roadDefinitions.get(roadId);
+    }
+
     public int removeNearby(Location centre, int radius) {
         int removed = 0;
         Iterator<Map.Entry<String, RoadBlock>> it = roadBlocks.entrySet().iterator();
-
         while (it.hasNext()) {
-            RoadBlock rb = it.next().getValue();
+            Map.Entry<String, RoadBlock> entry = it.next();
+            RoadBlock rb = entry.getValue();
             Location loc = rb.getLocation();
             if (loc.getWorld() == null || !loc.getWorld().equals(centre.getWorld())) continue;
-
-            double dist = loc.distance(centre);
-            if (dist <= radius) {
-                Block block = loc.getBlock();
-                block.setBlockData(rb.getOriginalData());
+            if (loc.distance(centre) <= radius) {
+                loc.getBlock().setBlockData(rb.getOriginalData());
+                blockToRoad.remove(entry.getKey());
                 it.remove();
                 removed++;
             }
         }
-
         if (removed > 0) saveRoads();
         return removed;
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    public Map<String, RoadDefinition> getRoadDefinitions() { return roadDefinitions; }
 
     private String key(Location loc) {
-        return loc.getWorld().getName() + "," + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
+        return loc.getWorld().getName() + "," + loc.getBlockX()
+                + "," + loc.getBlockY() + "," + loc.getBlockZ();
     }
 }

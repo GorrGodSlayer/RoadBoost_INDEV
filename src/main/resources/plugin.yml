@@ -2,8 +2,9 @@ name: RoadBoost
 version: 1.0.0
 main: com.roadboost.RoadBoostPlugin
 api-version: '1.21'
-description: Create roads and bridges by walking and give players boosts when they walk on them.
+description: Create roads and bridges by walking, with BlueMap integration.
 depend: [WorldEdit]
+softdepend: [BlueMap]
 
 permissions:
   roadboost.build:
@@ -16,9 +17,9 @@ permissions:
 commands:
   road:
     description: Main road management command.
-    usage: /road <start|stop|undo|reload>
+    usage: /road <start <from>|stop <to>|undo|reload>
     permission: roadboost.build
   bridge:
-    description: Start or stop building a bridge by walking.
-    usage: /bridge <start|stop|list>
+    description: Build a bridge by walking.
+    usage: /bridge <start <schematic>|stop|undo|list>
     permission: roadboost.build
