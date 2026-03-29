@@ -129,32 +129,10 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
      *  Uses the bridge's recorded forward steps — one point per step, at the anchor position.
      */
     private List<Location> extractWaypoints(BridgeSession session) {
-    List<Location> result = new ArrayList<>();
-    int lockedY = session.getLockedY() - 1;
-
-    java.util.TreeMap<Integer, java.util.List<Location>> byForward = new java.util.TreeMap<>();
-    for (RoadBlock rb : session.getPlaced()) {
-        Location loc = rb.getLocation();
-        if (loc.getBlockY() != lockedY) continue;
-        byForward.computeIfAbsent(loc.getBlockX(), k -> new ArrayList<>()).add(loc);
+        // BridgeSession tracks anchor positions for each stamped module
+        // We use those directly as the center-line waypoints
+        return session.getCenterLineWaypoints();
     }
-
-    if (byForward.size() <= 1) {
-        byForward.clear();
-        for (RoadBlock rb : session.getPlaced()) {
-            Location loc = rb.getLocation();
-            if (loc.getBlockY() != lockedY) continue;
-            byForward.computeIfAbsent(loc.getBlockZ(), k -> new ArrayList<>()).add(loc);
-        }
-    }
-
-    for (java.util.List<Location> group : byForward.values()) {
-        group.sort((a, b) -> Integer.compare(a.getBlockZ(), b.getBlockZ()));
-        result.add(group.get(group.size() / 2));
-    }
-
-    return result;
-}
 
     private void handleUndo(Player player, String[] args) {
         int radius = plugin.getConfig().getInt("bridge-undo-radius", 5);

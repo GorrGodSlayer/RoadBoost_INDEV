@@ -196,6 +196,44 @@ public class RoadManager {
 
     public Map<String, RoadDefinition> getRoadDefinitions() { return roadDefinitions; }
 
+    /**
+     * Deletes a road by display name (e.g. "Spawn-Village").
+     * Restores all original blocks and removes from BlueMap.
+     * @return the deleted definition, or null if not found.
+     */
+    public RoadDefinition deleteRoadByName(String displayName) {
+        // Find matching definition
+        RoadDefinition target = null;
+        for (RoadDefinition def : roadDefinitions.values()) {
+            String dn = def.getFromName() + "-" + def.getToName();
+            if (dn.equalsIgnoreCase(displayName)
+                    || def.getDisplayName().equalsIgnoreCase(displayName)
+                    || def.getId().equalsIgnoreCase(displayName)) {
+                target = def;
+                break;
+            }
+        }
+        if (target == null) return null;
+
+        String roadId = target.getId();
+
+        // Restore all blocks belonging to this road
+        Iterator<Map.Entry<String, RoadBlock>> it = roadBlocks.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, RoadBlock> entry = it.next();
+            if (roadId.equals(blockToRoad.get(entry.getKey()))) {
+                RoadBlock rb = entry.getValue();
+                rb.getLocation().getBlock().setBlockData(rb.getOriginalData());
+                blockToRoad.remove(entry.getKey());
+                it.remove();
+            }
+        }
+
+        roadDefinitions.remove(roadId);
+        saveRoads();
+        return target;
+    }
+
     private String key(Location loc) {
         return loc.getWorld().getName() + "," + loc.getBlockX()
                 + "," + loc.getBlockY() + "," + loc.getBlockZ();

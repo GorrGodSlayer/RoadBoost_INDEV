@@ -373,5 +373,6 @@ public class BridgeSession {
 
     public int getLockedY()            { return lockedY; }
     public List<RoadBlock> getPlaced() { return placed; }
+    public List<org.bukkit.Location> getCenterLineWaypoints() { return new java.util.ArrayList<>(); }
     public int size()                  { return placed.size(); }
 }

@@ -37,6 +37,7 @@ public class RoadCommand implements CommandExecutor, TabCompleter {
             case "start"  -> handleStart(player, args);
             case "stop"   -> handleStop(player, args);
             case "undo"   -> handleUndo(player, args);
+            case "delete" -> handleDelete(player, args);
             case "reload" -> handleReload(player);
             default       -> sendHelp(player);
         }
@@ -139,6 +140,37 @@ public class RoadCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(Component.text("Removed " + removed + " block(s) and restored originals.", NamedTextColor.GREEN));
     }
 
+    private void handleDelete(Player player, String[] args) {
+        if (!player.hasPermission("roadboost.build")) {
+            player.sendMessage(Component.text("No permission.", NamedTextColor.RED)); return;
+        }
+        if (args.length < 2) {
+            player.sendMessage(Component.text("Usage: /road delete <from-to>  e.g. /road delete Spawn-Village", NamedTextColor.RED));
+            player.sendMessage(Component.text("Available roads:", NamedTextColor.GRAY));
+            for (var def : plugin.getRoadManager().getRoadDefinitions().values()) {
+                player.sendMessage(Component.text("  - " + def.getFromName() + "-" + def.getToName(), NamedTextColor.YELLOW));
+            }
+            return;
+        }
+
+        String name = args[1];
+        com.roadboost.models.RoadDefinition deleted = plugin.getRoadManager().deleteRoadByName(name);
+
+        if (deleted == null) {
+            player.sendMessage(Component.text("Road '" + name + "' not found. Use /road delete with no args to list roads.", NamedTextColor.RED));
+            return;
+        }
+
+        // Remove from BlueMap
+        if (plugin.getBlueMapIntegration() != null) {
+            plugin.getBlueMapIntegration().removeRoad(deleted);
+        }
+
+        player.sendMessage(Component.text("Road ", NamedTextColor.GREEN)
+                .append(Component.text(deleted.getDisplayName(), NamedTextColor.GOLD))
+                .append(Component.text(" deleted and terrain restored.", NamedTextColor.GREEN)));
+    }
+
     private void handleReload(Player player) {
         if (!player.hasPermission("roadboost.admin")) {
             player.sendMessage(Component.text("No permission.", NamedTextColor.RED)); return;
@@ -168,6 +200,8 @@ public class RoadCommand implements CommandExecutor, TabCompleter {
                 .append(Component.text(" - Begin recording from a named point.", NamedTextColor.GRAY)));
         player.sendMessage(Component.text("/road stop <to>", NamedTextColor.YELLOW)
                 .append(Component.text(" - Stop and name the destination.", NamedTextColor.GRAY)));
+        player.sendMessage(Component.text("/road delete <from-to>", NamedTextColor.YELLOW)
+                .append(Component.text(" - Delete a named road and restore terrain.", NamedTextColor.GRAY)));
         player.sendMessage(Component.text("/road undo [radius]", NamedTextColor.YELLOW)
                 .append(Component.text(" - Remove road blocks near you.", NamedTextColor.GRAY)));
         player.sendMessage(Component.text("/road reload", NamedTextColor.YELLOW)
@@ -177,7 +211,12 @@ public class RoadCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String alias, @NotNull String[] args) {
-        if (args.length == 1) return List.of("start", "stop", "undo", "reload");
+        if (args.length == 1) return List.of("start", "stop", "undo", "delete", "reload");
+        if (args.length == 2 && args[0].equalsIgnoreCase("delete")) {
+            return plugin.getRoadManager().getRoadDefinitions().values().stream()
+                    .map(d -> d.getFromName() + "-" + d.getToName())
+                    .collect(java.util.stream.Collectors.toList());
+        }
         return List.of();
     }
 }

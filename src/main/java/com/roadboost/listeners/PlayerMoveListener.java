@@ -3,6 +3,8 @@ package com.roadboost.listeners;
 import com.roadboost.RoadBoostPlugin;
 import com.roadboost.bridge.BridgeSession;
 import com.roadboost.managers.RecordingSession;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -27,27 +29,26 @@ public class PlayerMoveListener implements Listener {
         var player = event.getPlayer();
         var uuid   = player.getUniqueId();
 
-        // --- Road recording ---
-        RecordingSession roadSession = plugin.getSessionManager().getSession(uuid);
-        if (roadSession != null) {
-            roadSession.record(player, to, from);
-            return;
-        }
+        RecordingSession roadSession   = plugin.getSessionManager().getSession(uuid);
+        BridgeSession    bridgeSession = plugin.getBridgeSessionManager().get(uuid);
 
-        // --- Bridge recording ---
-        BridgeSession bridgeSession = plugin.getBridgeSessionManager().get(uuid);
+        // If a bridge is active (either standalone or mid-road), handle it first
         if (bridgeSession != null) {
             boolean autoEnd = bridgeSession.onPlayerMove(player, from, to);
             if (autoEnd) {
                 plugin.getBridgeSessionManager().remove(uuid);
                 plugin.getBridgeCommand().commitSession(player, bridgeSession);
-                player.sendMessage(
-                    net.kyori.adventure.text.Component.text(
+                player.sendMessage(Component.text(
                         "Bridge auto-completed — you reached solid ground!",
-                        net.kyori.adventure.text.format.NamedTextColor.GREEN
-                    )
-                );
+                        NamedTextColor.GREEN));
             }
+            // Don't record road steps while bridge is active
+            return;
+        }
+
+        // Road recording (only when no bridge is active)
+        if (roadSession != null && !roadSession.isBridgeActive()) {
+            roadSession.record(player, to, from);
         }
     }
 
@@ -55,19 +56,15 @@ public class PlayerMoveListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         var uuid = event.getPlayer().getUniqueId();
 
-        // Commit road session on disconnect
         RecordingSession roadSession = plugin.getSessionManager().getSession(uuid);
         if (roadSession != null) {
             plugin.getSessionManager().removeSession(uuid);
-            if (roadSession.size() > 0) {
+            if (roadSession.size() > 0)
                 plugin.getRoadManager().addRoadBlocks(roadSession.getRecorded());
-            }
         }
 
-        // Commit bridge session on disconnect
         BridgeSession bridgeSession = plugin.getBridgeSessionManager().remove(uuid);
-        if (bridgeSession != null && bridgeSession.size() > 0) {
+        if (bridgeSession != null && bridgeSession.size() > 0)
             plugin.getRoadManager().addRoadBlocks(bridgeSession.getPlaced());
-        }
     }
 }
